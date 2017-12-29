@@ -6,6 +6,7 @@ import sys
 import re
 from collections import Counter
 import resource
+import itertools
 
 #Compare output of CNV software control-freec against gene annotations
 
@@ -108,20 +109,20 @@ def Compare_ranges(cnvlist,gtfd):
         if chrm in cnvd:
 
           if cnvr in cnvd[chrm]: #cur cnvr in dict (ie. overlapping gene(s) already found)
-            print "cnvr in dict"
+            #print "cnvr in dict"
             generd=cnvd[chrm][cnvr][4]
             generd[genen]=generange1
             tmpl=[chrm,cnvr,cpn,etype,generd]
             cnvd[chrm][cnvr]=tmpl
 
           else: #current cnvr not in dict, other cnvr's could contain gene
-            print "cnvr not in dict"
+            #print "cnvr not in dict"
             generd[genen]=generange1
             tmpl=[chrm,cnvr,cpn,etype,generd]
             cnvd[chrm][cnvr]=tmpl
 
         else: #Chrm being added, gene can not be in dict yet so no need to check ranges
-          print "chrm not in cnvd yet, initialize and add it"
+          #print "chrm not in cnvd yet, initialize and add it"
           cnvd[chrm]={}
           generd[genen]=generange1
           tmpl=[chrm,cnvr,cpn,etype,generd]
@@ -140,38 +141,35 @@ def Compare_ranges(cnvlist,gtfd):
 
   return cnvd
 
-def Check_overlaps(adict,achrm,agene,arange,grd,cnvrange,copyn,cptype): #(cnvd,chrm,genen,generange1,generd,cnvr,cpn,etype)
-  '''This is run every time the ranges overlap between cnv list and gtf dict'''
-  delg,delchr,delrange='',0,xrange(0)
-  for k,v in adict[achrm].items(): #key=range, value=list including genedict
-    if agene in v[4]: #if current gene is in dict of genes
-      print "Gene exists",v[4][agene],agene,arange
-      #for y,z in v[4].items(): #gene, length; this dictionary should be small (most <20, few ~1000)
-      if v[4][agene]<arange: #current gene-GTF overlap is larger than the one in cnvdict
-        #delg,delchr,delrange=agene,achrm,cnvrange #del v[4][agene]
-        del v[4][agene]
-        grd[agene]=arange #genename:generange1
-        templist=[achrm,cnvrange,copyn,cptype,grd]
-        adict[achrm][cnvrange]=templist #add current one, break, then delete duplicate
-        #break
-        return adict
-      else:
-        pass
+def Check_gene_overlaps(cnvdict): #
+  '''Need to go through CNVdict and for each entry go through the dict again looking for duplicate+ gene names'''
+  finald,chrms,dellist={},cnvdict.keys(),[]
+  for x in chrms:
+    for k,v in cnvdict[x].items(): #key=cnvrange, value=[chrm,cnvr,cpn,etype,generd]
+      chrm,cnvr,cpn,etype,generd=v[0],v[1],v[2],v[3],v[4]
+      for x,y in generd.items(): #for each gene in genedict, check against whole cnvdict[chrm]
+        for l,m in cnvdict[chrm].items(): #l=cnvrange, m=list
+          tmp=[]
+          if x in m[4] and cnvr!=l: #if gene in dict and not the same range/key
+            #print x,y,m[4]
+            #Check range lengths
+            if m[4][x]>y: #
+              tmp=[chrm,k,x]#del 
+              dellist.append(tmp)
+            elif y>m[4][x]: #
+              tmp=[chrm,l,x]#del 
+              dellist.append(tmp)
+            else:
+              print "Duplicate exists but one is not bigger than the other"
+              sys.exit(0)
 
-    else: #gene doesn't exist in any ranges genedict, add it
-      grd[agene]=arange
-      templist=[achrm,cnvrange,copyn,cptype,grd]
-      adict[achrm][cnvrange]=templist
-      return adict
+  dellist.sort() #Get unique list of lists
+  fdellist=list(dellist for dellist,_ in itertools.groupby(dellist))
+  for d in fdellist:
+    del cnvdict[d[0]][d[1]][4][d[2]] #cnvdict[chrm][range][4][gene]
 
-  #Found duplicate to delete
-  #if delg in adict[delchr][delrange][4]:
-  #  del adict[delchr][delrange][4][delg]
-  #else:
-  #  sys.exit("Key/genename for deletion was not found at deletion step")
-  #adict[achrm][cnvrange]=templist
-  #return adict
-        
+  return cnvdict
+
 
 def Get_stats(cnvs):
   '''Go through CNVs to get average and cumulative size per gain/loss, for plotting'''
@@ -239,15 +237,17 @@ if __name__ == "__main__":
 
   c=Compare_ranges(cv,gtfd)
 
+  cnvfinal=Check_gene_overlaps(c)
+
   outf=open('CNV.outfile.'+filename+'.tsv', 'w')
   y=0
   for l,m in c.items():
 
     for k,v in m.items():
-      y+=1
-      print k,v
-      if y>10:
-        sys.exit(0)
+      #y+=1
+      #print k,v
+      #if y>10:
+      #  sys.exit(0)
       tmpx=[v[0],v[1][0],v[1][-1],v[2],v[3]]
       genec=len(v[4])
       genenm=';'.join(str(z) for z in v[4])
@@ -257,7 +257,6 @@ if __name__ == "__main__":
       outf.write(myline)
       outf.write('\n')
   outf.close()
-
 
 
 '''
